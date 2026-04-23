@@ -84,9 +84,14 @@ header h1 { font-size: 1rem; font-weight: 700; }
 .nbtn.add { color: #5a9; }
 .nbtn.add:hover { background: #f0fff4; color: #27ae60; }
 .nbtn.del:hover { background: #fff0f0; color: #e74c3c; }
-.nbtn.star { color: #ccc; font-size: 15px; padding: 0 4px; }
-.nbtn.star.done { color: #27ae60; }
-.nbtn.star:hover { color: #27ae60; }
+.nbtn.star { color: #ddd; font-size: 15px; padding: 0 3px; }
+.nbtn.star-ongoing.active  { color: #4472C4; }
+.nbtn.star-ongoing:hover   { color: #4472C4; }
+.nbtn.star-complete.active { color: #27ae60; }
+.nbtn.star-complete:hover  { color: #27ae60; }
+.task-status { font-size: 13px; margin-left: 4px; vertical-align: middle; }
+.task-status.ongoing  { color: #4472C4; }
+.task-status.complete { color: #27ae60; }
 
 .col-label {
   position: absolute;
@@ -344,16 +349,35 @@ function makeNode(type, item, p, parentId) {
   acts.className = 'node-actions';
 
   if (type === 'task') {
-    const starBtn = document.createElement('button');
-    starBtn.className = 'nbtn star' + (item.done ? ' done' : '');
-    starBtn.textContent = '★';
-    starBtn.title = 'Mark complete';
-    starBtn.onclick = () => {
-      item.done = !item.done;
-      starBtn.classList.toggle('done', item.done);
-      save();
+    // Migrate legacy done boolean
+    if (item.status === undefined) item.status = item.done ? 'complete' : '';
+
+    // Persistent status badge in the label row
+    const badge = document.createElement('span');
+    badge.className = 'task-status ' + (item.status || '');
+    badge.textContent = item.status ? '★' : '';
+    lbl.appendChild(badge);
+
+    // Two star buttons shown on hover
+    const mkStar = (cls, title, value) => {
+      const btn = document.createElement('button');
+      btn.className = `nbtn star ${cls}` + (item.status === value ? ' active' : '');
+      btn.textContent = '★';
+      btn.title = title;
+      btn.onclick = () => {
+        item.status = item.status === value ? '' : value;
+        badge.className = 'task-status ' + (item.status || '');
+        badge.textContent = item.status ? '★' : '';
+        ongoingBtn.classList.toggle('active', item.status === 'ongoing');
+        completeBtn.classList.toggle('active', item.status === 'complete');
+        save();
+      };
+      return btn;
     };
-    acts.appendChild(starBtn);
+    const ongoingBtn  = mkStar('star-ongoing',  'Ongoing',  'ongoing');
+    const completeBtn = mkStar('star-complete', 'Complete', 'complete');
+    acts.appendChild(ongoingBtn);
+    acts.appendChild(completeBtn);
   } else {
     const childLabel = type === 'goal' ? 'Actor' : type === 'actor' ? 'Impact' : 'Task';
     const addBtn = document.createElement('button');
@@ -482,7 +506,7 @@ function addTask(impactId) {
   for (const actor of state.actors) {
     const imp = actor.impacts.find(i => i.id === impactId);
     if (imp) {
-      const task = { id: uid(), text: '', done: false };
+      const task = { id: uid(), text: '', status: '' };
       imp.tasks.push(task);
       render();
       focusId(task.id);
