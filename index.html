@@ -138,6 +138,7 @@ header h1 { font-size: 1rem; font-weight: 700; }
   </div>
   <div class="hdr-sp"></div>
   <button class="hdr-btn" onclick="clearAll()">Clear</button>
+  <button class="hdr-btn" onclick="exportText()">Download Text</button>
   <button class="hdr-btn" onclick="exportJSON()">Export</button>
   <button class="hdr-btn" onclick="importJSON()">Import</button>
 </header>
@@ -550,6 +551,28 @@ function clearAll() {
   if (!confirm('Clear everything?')) return;
   state = { goal: { id: uid(), text: '' }, actors: [] };
   render();
+}
+
+function exportText() {
+  const STATUS_LABEL = { ongoing: ' [ongoing]', complete: ' [complete]' };
+  const lines = [];
+  lines.push('GOAL: ' + (state.goal.text || '(untitled)'));
+  lines.push('');
+  for (const actor of state.actors) {
+    lines.push('ACTOR: ' + (actor.text || '(untitled)'));
+    for (const imp of actor.impacts) {
+      lines.push('  IMPACT: ' + (imp.text || '(untitled)'));
+      for (const task of imp.tasks) {
+        const status = STATUS_LABEL[task.status] || '';
+        lines.push('    TASK: ' + (task.text || '(untitled)') + status);
+      }
+    }
+    lines.push('');
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+  a.download = 'impact-map.txt';
+  a.click();
 }
 
 function exportJSON() {
