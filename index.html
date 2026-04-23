@@ -44,7 +44,7 @@ header h1 { font-size: 1rem; font-weight: 700; }
   background: #fff;
   border-radius: 8px;
   padding: 10px 12px;
-  width: 270px;
+  width: 351px;
   box-shadow: 0 1px 6px rgba(0,0,0,0.12);
   transition: box-shadow 0.15s;
 }
@@ -90,7 +90,7 @@ header h1 { font-size: 1rem; font-weight: 700; }
   font-size: 0.7rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.09em;
   color: #8899aa; text-align: center;
-  width: 270px;
+  width: 351px;
 }
 
 .add-btn-floating {
@@ -101,6 +101,24 @@ header h1 { font-size: 1rem; font-weight: 700; }
   transition: border-color 0.15s, color 0.15s;
 }
 .add-btn-floating:hover { border-color: #888; color: #555; }
+
+/* Drag & drop */
+.node[draggable="true"] { cursor: grab; }
+.node.dragging { opacity: 0.35; cursor: grabbing; }
+.drag-handle { font-size: 11px; opacity: 0; margin-right: 5px; cursor: grab; }
+.node:hover .drag-handle { opacity: 0.45; }
+
+.node.drop-before::before,
+.node.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 3px;
+  background: #4472C4;
+  border-radius: 2px;
+}
+.node.drop-before::before { top: -5px; }
+.node.drop-after::after  { bottom: -5px; }
 </style>
 </head>
 <body>
@@ -124,7 +142,7 @@ header h1 { font-size: 1rem; font-weight: 700; }
 
 <script>
 // ── Layout constants ──────────────────────────────────────────────────────────
-const CARD_W  = 270;
+const CARD_W  = 351;
 const CARD_H  = 72;   // assumed fixed height for layout calculations
 const UNIT_H  = 92;   // vertical pixels per leaf node
 const COL_GAP = 80;   // horizontal gap between columns (space for arrows)
@@ -219,21 +237,21 @@ function render() {
   const arrowPaths = [];
 
   const goalPos = pos[state.goal.id];
-  canvas.appendChild(makeNode('goal', state.goal, goalPos));
+  canvas.appendChild(makeNode('goal', state.goal, goalPos, null));
 
   for (const actor of state.actors) {
     const aPos = pos[actor.id];
-    canvas.appendChild(makeNode('actor', actor, aPos));
+    canvas.appendChild(makeNode('actor', actor, aPos, state.goal.id));
     arrowPaths.push(bezier(goalPos, aPos, '#ED7D31', 'ah-actor'));
 
     for (const imp of actor.impacts) {
       const iPos = pos[imp.id];
-      canvas.appendChild(makeNode('impact', imp, iPos));
+      canvas.appendChild(makeNode('impact', imp, iPos, actor.id));
       arrowPaths.push(bezier(aPos, iPos, '#70AD47', 'ah-impact'));
 
       for (const task of imp.tasks) {
         const tPos = pos[task.id];
-        canvas.appendChild(makeNode('task', task, tPos));
+        canvas.appendChild(makeNode('task', task, tPos, imp.id));
         arrowPaths.push(bezier(iPos, tPos, '#FFC000', 'ah-task'));
       }
     }
@@ -283,16 +301,34 @@ const PLACEHOLDER = {
   task:   'Feature or activity…',
 };
 
-function makeNode(type, item, p) {
+function makeNode(type, item, p, parentId) {
   const div = document.createElement('div');
-  div.className  = `node node-${type}`;
-  div.dataset.id = item.id;
+  div.className        = `node node-${type}`;
+  div.dataset.id       = item.id;
+  div.dataset.type     = type;
+  div.dataset.parentId = parentId || '';
   div.style.left = p.x + 'px';
   div.style.top  = p.y + 'px';
 
+  if (type !== 'goal') {
+    div.draggable = true;
+    div.addEventListener('dragstart', onDragStart);
+    div.addEventListener('dragend',   onDragEnd);
+    div.addEventListener('dragover',  onDragOver);
+    div.addEventListener('dragleave', onDragLeave);
+    div.addEventListener('drop',      onDrop);
+  }
+
   const lbl = document.createElement('div');
-  lbl.className   = 'node-label';
-  lbl.textContent = NODE_LABEL[type];
+  lbl.className = 'node-label';
+
+  if (type !== 'goal') {
+    const handle = document.createElement('span');
+    handle.className   = 'drag-handle';
+    handle.textContent = '⠿';
+    lbl.appendChild(handle);
+  }
+  lbl.appendChild(document.createTextNode(NODE_LABEL[type]));
 
   const txt = document.createElement('div');
   txt.className       = 'node-text';
@@ -329,6 +365,85 @@ function makeNode(type, item, p) {
   div.appendChild(txt);
   div.appendChild(acts);
   return div;
+}
+
+// ── Drag & drop ───────────────────────────────────────────────────────────────
+
+let dragState = null;
+
+function onDragStart(e) {
+  if (e.target.closest('.node-text')) { e.preventDefault(); return; }
+  const div = e.currentTarget;
+  dragState = { type: div.dataset.type, id: div.dataset.id, parentId: div.dataset.parentId };
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', div.dataset.id);
+  requestAnimationFrame(() => div.classList.add('dragging'));
+}
+
+function onDragEnd() {
+  document.querySelectorAll('.node').forEach(n =>
+    n.classList.remove('dragging', 'drop-before', 'drop-after'));
+  dragState = null;
+}
+
+function onDragOver(e) {
+  if (!dragState) return;
+  const div = e.currentTarget;
+  if (div.dataset.id === dragState.id) return;
+  if (div.dataset.type !== dragState.type) return;
+  if (div.dataset.parentId !== dragState.parentId) return;
+
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+
+  const rect = div.getBoundingClientRect();
+  const before = e.clientY < rect.top + rect.height / 2;
+  div.classList.toggle('drop-before', before);
+  div.classList.toggle('drop-after', !before);
+}
+
+function onDragLeave(e) {
+  const div = e.currentTarget;
+  if (!div.contains(e.relatedTarget))
+    div.classList.remove('drop-before', 'drop-after');
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  const div = e.currentTarget;
+  if (!dragState || div.dataset.id === dragState.id) return;
+  if (div.dataset.type !== dragState.type) return;
+  if (div.dataset.parentId !== dragState.parentId) return;
+
+  const rect = div.getBoundingClientRect();
+  const before = e.clientY < rect.top + rect.height / 2;
+  reorder(dragState.type, dragState.id, div.dataset.id, dragState.parentId, before);
+}
+
+function reorder(type, srcId, targetId, parentId, before) {
+  let arr;
+  if (type === 'actor') {
+    arr = state.actors;
+  } else if (type === 'impact') {
+    const actor = state.actors.find(a => a.id === parentId);
+    if (!actor) return;
+    arr = actor.impacts;
+  } else if (type === 'task') {
+    for (const a of state.actors) {
+      const imp = a.impacts.find(i => i.id === parentId);
+      if (imp) { arr = imp.tasks; break; }
+    }
+  }
+  if (!arr) return;
+
+  const si = arr.findIndex(x => x.id === srcId);
+  if (si === -1) return;
+  const [item] = arr.splice(si, 1);
+  const ti = arr.findIndex(x => x.id === targetId);
+  arr.splice(before ? ti : ti + 1, 0, item);
+
+  dragState = null;
+  render();
 }
 
 // ── State mutations ───────────────────────────────────────────────────────────
