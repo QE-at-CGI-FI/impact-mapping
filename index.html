@@ -84,6 +84,9 @@ header h1 { font-size: 1rem; font-weight: 700; }
 .nbtn.add { color: #5a9; }
 .nbtn.add:hover { background: #f0fff4; color: #27ae60; }
 .nbtn.del:hover { background: #fff0f0; color: #e74c3c; }
+.nbtn.star { color: #ccc; font-size: 15px; padding: 0 4px; }
+.nbtn.star.done { color: #27ae60; }
+.nbtn.star:hover { color: #27ae60; }
 
 .col-label {
   position: absolute;
@@ -340,7 +343,18 @@ function makeNode(type, item, p, parentId) {
   const acts = document.createElement('div');
   acts.className = 'node-actions';
 
-  if (type !== 'task') {
+  if (type === 'task') {
+    const starBtn = document.createElement('button');
+    starBtn.className = 'nbtn star' + (item.done ? ' done' : '');
+    starBtn.textContent = '★';
+    starBtn.title = 'Mark complete';
+    starBtn.onclick = () => {
+      item.done = !item.done;
+      starBtn.classList.toggle('done', item.done);
+      save();
+    };
+    acts.appendChild(starBtn);
+  } else {
     const childLabel = type === 'goal' ? 'Actor' : type === 'actor' ? 'Impact' : 'Task';
     const addBtn = document.createElement('button');
     addBtn.className   = 'nbtn add';
@@ -468,7 +482,7 @@ function addTask(impactId) {
   for (const actor of state.actors) {
     const imp = actor.impacts.find(i => i.id === impactId);
     if (imp) {
-      const task = { id: uid(), text: '' };
+      const task = { id: uid(), text: '', done: false };
       imp.tasks.push(task);
       render();
       focusId(task.id);
